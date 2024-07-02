@@ -250,6 +250,8 @@ int main(int argc, char * argv[])
   // type: the type of the topic to bridge (e.g. 'pkgname/msg/MsgName')
   // queue_size: the queue size to use (default: 100)
   const char * topics_parameter_name = "topics";
+  const char * topics_1_to_2_parameter_name = "topics_1_to_2";
+  const char * topics_2_to_1_parameter_name = "topics_2_to_1";
   // the services parameters need to be arrays
   // and each item needs to be a dictionary with the following keys;
   // topic: the name of the topic to bridge (e.g. '/service_name')
@@ -260,10 +262,16 @@ int main(int argc, char * argv[])
     topics_parameter_name = argv[1];
   }
   if (argc > 2) {
-    services_1_to_2_parameter_name = argv[2];
+    topics_1_to_2_parameter_name = argv[2];
   }
   if (argc > 3) {
-    services_2_to_1_parameter_name = argv[3];
+    topics_2_to_1_parameter_name = argv[3];
+  }
+  if (argc > 4) {
+    services_1_to_2_parameter_name = argv[4];
+  }
+  if (argc > 5) {
+    services_2_to_1_parameter_name = argv[5];
   }
 
   // Topics
@@ -309,6 +317,112 @@ int main(int argc, char * argv[])
     fprintf(
       stderr,
       "The parameter '%s' either doesn't exist or isn't an array\n", topics_parameter_name);
+  }
+
+  // Topics 1 to 2
+  XmlRpc::XmlRpcValue topics_1_to_2;
+  if (
+    ros1_node.getParam(topics_1_to_2_parameter_name, topics_1_to_2) &&
+    topics_1_to_2.getType() == XmlRpc::XmlRpcValue::TypeArray)
+  {
+    for (size_t i = 0; i < static_cast<size_t>(topics_1_to_2.size()); ++i) {
+      std::string topic_name = static_cast<std::string>(topics_1_to_2[i]["topic"]);
+      std::string type_name = static_cast<std::string>(topics_1_to_2[i]["type"]);
+      size_t queue_size = static_cast<int>(topics_1_to_2[i]["queue_size"]);
+      if (!queue_size) {
+        queue_size = 100;
+      }
+      printf(
+        "Trying to create bidirectional bridge for topic '%s' "
+        "with ROS 2 type '%s'\n",
+        topic_name.c_str(), type_name.c_str());
+
+      try {
+        RCLCPP_INFO(ros2_node->get_logger(), "create topic_1_to_2 bridge for topic " + topic_name);
+        ros1_bridge::BridgeHandles handles;
+        if (topics_1_to_2[i].hasMember("qos")) {
+          printf("Setting up QoS for '%s': ", topic_name.c_str());
+          auto qos_settings = qos_from_params(topics_1_to_2[i]["qos"]);
+          printf("\n");
+          // ros1_bridge::BridgeHandles handles = ros1_bridge::create_bidirectional_bridge(
+          //   ros1_node, ros2_node, "", type_name, topic_name, queue_size, qos_settings);
+          handles.bridge1to2 = ros1_bridge::create_bridge_from_1_to_2(
+            ros1_node, ros2_node,
+            "", topic_name, queue_size, type_name, topic_name, qos_settings);
+          all_handles.push_back(handles);
+        } else {
+          // ros1_bridge::BridgeHandles handles = ros1_bridge::create_bidirectional_bridge(
+          //   ros1_node, ros2_node, "", type_name, topic_name, queue_size);
+          handles.bridge1to2 = ros1_bridge::create_bridge_from_1_to_2(
+            ros1_node, ros2_node,
+            "", topic_name, queue_size, type_name, topic_name, queue_size);
+          all_handles.push_back(handles);
+        }
+      } catch (std::runtime_error & e) {
+        fprintf(
+          stderr,
+          "failed to create topics_1_to_2 bridge for topic '%s' "
+          "with ROS 2 type '%s': %s\n",
+          topic_name.c_str(), type_name.c_str(), e.what());
+      }
+    }
+  } else {
+    fprintf(
+      stderr,
+      "The parameter '%s' either doesn't exist or isn't an array\n", topics_1_to_2_parameter_name);
+  }
+
+  // Topics 2 to 1
+  XmlRpc::XmlRpcValue topics_2_to_1;
+  if (
+    ros1_node.getParam(topics_2_to_1_parameter_name, topics_2_to_1) &&
+    topics_2_to_1.getType() == XmlRpc::XmlRpcValue::TypeArray)
+  {
+    for (size_t i = 0; i < static_cast<size_t>(topics_2_to_1.size()); ++i) {
+      std::string topic_name = static_cast<std::string>(topics_2_to_1[i]["topic"]);
+      std::string type_name = static_cast<std::string>(topics_2_to_1[i]["type"]);
+      size_t queue_size = static_cast<int>(topics_2_to_1[i]["queue_size"]);
+      if (!queue_size) {
+        queue_size = 100;
+      }
+      printf(
+        "Trying to create bidirectional bridge for topic '%s' "
+        "with ROS 2 type '%s'\n",
+        topic_name.c_str(), type_name.c_str());
+
+      try {
+        RCLCPP_INFO(ros2_node->get_logger(), "create topic_2_to_1 bridge for topic " + topic_name);
+        ros1_bridge::BridgeHandles handles;
+        if (topics_2_to_1[i].hasMember("qos")) {
+          printf("Setting up QoS for '%s': ", topic_name.c_str());
+          auto qos_settings = qos_from_params(topics_2_to_1[i]["qos"]);
+          printf("\n");
+          // ros1_bridge::BridgeHandles handles = ros1_bridge::create_bidirectional_bridge(
+          //   ros1_node, ros2_node, "", type_name, topic_name, queue_size, qos_settings);
+          handles.bridge2to1 = ros1_bridge::create_bridge_from_2_to_1(
+            ros2_node, ros1_node,
+            type_name, topic_name, queue_size, "", topic_name, queue_size);
+          all_handles.push_back(handles);
+        } else {
+          // ros1_bridge::BridgeHandles handles = ros1_bridge::create_bidirectional_bridge(
+          //   ros1_node, ros2_node, "", type_name, topic_name, queue_size);
+          handles.bridge2to1 = ros1_bridge::create_bridge_from_2_to_1(
+            ros2_node, ros1_node,
+            type_name, topic_name, queue_size, "", topic_name, queue_size);
+          all_handles.push_back(handles);
+        }
+      } catch (std::runtime_error & e) {
+        fprintf(
+          stderr,
+          "failed to create topics_2_to_1 bridge for topic '%s' "
+          "with ROS 2 type '%s': %s\n",
+          topic_name.c_str(), type_name.c_str(), e.what());
+      }
+    }
+  } else {
+    fprintf(
+      stderr,
+      "The parameter '%s' either doesn't exist or isn't an array\n", topics_2_to_1_parameter_name);
   }
 
   // ROS 1 Services in ROS 2
